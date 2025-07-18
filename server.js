@@ -191,8 +191,10 @@ app.get('/jira-oauth-ticket', async (req, res) => {
         // Extract attachments
         const attachments = issue.fields.attachment || [];
         const attachmentInfo = [];
+        let allEvtxFiles = [];
         for (const att of attachments) {
             let zipContents = null;
+            let zipEvtxFiles = [];
             if (att.mimeType === 'application/zip' || att.filename.endsWith('.zip')) {
                 try {
                     // Download the ZIP file
@@ -203,7 +205,12 @@ app.get('/jira-oauth-ticket', async (req, res) => {
                     // Extract ZIP contents
                     const zip = new AdmZip(zipResponse.data);
                     zipContents = zip.getEntries().map(entry => entry.entryName);
+                    zipEvtxFiles = zipContents.filter(name => name.toLowerCase().endsWith('.evtx'));
+                    allEvtxFiles.push(...zipEvtxFiles);
                     console.log(`Extracted ZIP contents for ${att.filename}:`, zipContents);
+                    if (zipEvtxFiles.length > 0) {
+                        console.log(`EVTX files found in ZIP:`, zipEvtxFiles);
+                    }
                 } catch (zipErr) {
                     console.error(`Failed to extract ZIP ${att.filename}:`, zipErr.message);
                 }
@@ -216,12 +223,12 @@ app.get('/jira-oauth-ticket', async (req, res) => {
                 zipContents
             });
         }
-        // Check for .evtx files
-        const evtxFiles = attachmentInfo.filter(att => att.filename?.toLowerCase().endsWith('.evtx'));
-        const hasEvtx = evtxFiles.length > 0;
-        console.log('EVTX files found:', evtxFiles.map(f => f.filename));
-        // Removed logic that adds a comment to the ticket if no .evtx files are found
-        res.json({ ticketId, attachments: attachmentInfo, hasEvtx, evtxFiles, foundLogFiles: hasEvtx });
+        // Check for .evtx files in top-level attachments
+        const topLevelEvtxFiles = attachmentInfo.filter(att => att.filename?.toLowerCase().endsWith('.evtx')).map(att => att.filename);
+        allEvtxFiles.push(...topLevelEvtxFiles);
+        const hasEvtx = allEvtxFiles.length > 0;
+        console.log('EVTX files found (all sources):', allEvtxFiles);
+        res.json({ ticketId, attachments: attachmentInfo, hasEvtx, evtxFiles: allEvtxFiles, foundLogFiles: hasEvtx });
     } catch (error) {
         console.error('--- ERROR DETAILS ---');
         console.error('Error fetching Jira ticket (OAuth):', error.message);
