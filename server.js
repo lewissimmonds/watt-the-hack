@@ -82,9 +82,19 @@ app.post('/oauth/token', async (req, res) => {
     }
 });
 
+// Utility function to extract ticketId from a Jira issue URL
+function extractIssueCode(url) {
+    let split = url.split("=");
+    return split[split.length - 1];
+}
+
 // GET endpoint to fetch Jira ticket details and attachments using OAuth access token and cloudid
 app.get('/jira-ticket', async (req, res) => {
     let { ticketId, accessToken, cloudId, refreshToken } = req.query;
+    // If ticketId looks like a URL, extract the code
+    if (ticketId && ticketId.startsWith('http')) {
+        ticketId = extractIssueCode(ticketId);
+    }
     if (!ticketId || !cloudId) {
         return res.status(400).json({ error: 'Missing ticketId or cloudId in query params.' });
     }
