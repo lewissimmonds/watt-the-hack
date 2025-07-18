@@ -220,39 +220,7 @@ app.get('/jira-oauth-ticket', async (req, res) => {
         const evtxFiles = attachmentInfo.filter(att => att.filename?.toLowerCase().endsWith('.evtx'));
         const hasEvtx = evtxFiles.length > 0;
         console.log('EVTX files found:', evtxFiles.map(f => f.filename));
-        // If no .evtx files, add a comment to the ticket
-        if (!hasEvtx) {
-            const commentUrl = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${ticketId}/comment`;
-            const commentBody = {
-                body: {
-                    type: 'doc',
-                    version: 1,
-                    content: [
-                        {
-                            type: 'paragraph',
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: 'No Windows event log (.evtx) file found in attachments.'
-                                }
-                            ]
-                        }
-                    ]
-                }
-            };
-            try {
-                const commentResp = await axios.post(commentUrl, commentBody, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    }
-                });
-                console.log('Added comment to ticket:', commentResp.status);
-            } catch (commentErr) {
-                console.error('Failed to add comment to ticket:', commentErr.message);
-            }
-        }
+        // Removed logic that adds a comment to the ticket if no .evtx files are found
         res.json({ ticketId, attachments: attachmentInfo, hasEvtx, evtxFiles, foundLogFiles: hasEvtx });
     } catch (error) {
         console.error('--- ERROR DETAILS ---');
