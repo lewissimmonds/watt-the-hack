@@ -13,98 +13,6 @@ app.use(express.json());
 // Disable SSL certificate verification for local development
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-// POST endpoint to receive Jira webhook or automation
-app.post('/jira-ticket', async (req, res) => {
-    const { ticketId } = req.body;
-    if (!ticketId) {
-        return res.status(400).json({ error: 'Missing ticketId in request body.' });
-    }
-    try {
-        // Log all environment variables
-        console.log('--- ENVIRONMENT VARIABLES ---');
-        Object.keys(process.env).forEach(key => {
-            if (key.includes('JIRA')) {
-                console.log(`${key}: ${process.env[key]}`);
-            }
-        });
-        console.log('-----------------------------');
-        // Log request body
-        console.log('Request body:', req.body);
-        // Fetch ticket details from Jira
-        const jiraUrl = `${process.env.JIRA_BASE_URL}/rest/api/3/issue/${ticketId}`;
-        console.log('Jira API URL:', jiraUrl);
-        // Log axios request config
-        const axiosConfig = {
-            auth: {
-                username: process.env.JIRA_EMAIL,
-                password: process.env.JIRA_API_TOKEN
-            },
-            headers: {
-                'Accept': 'application/json'
-            }
-        };
-        console.log('Axios config:', axiosConfig);
-        const response = await axios.get(jiraUrl, axiosConfig);
-        console.log('Jira API response status:', response.status);
-        console.log('Jira API response headers:', response.headers);
-        console.log('Jira API response data:', response.data);
-        const issue = response.data;
-        // Extract attachments
-        const attachments = issue.fields.attachment || [];
-        const attachmentInfo = attachments.map(att => ({
-            filename: att.filename,
-            mimeType: att.mimeType,
-            content: att.content
-        }));
-        // Check for .evtx files
-        const evtxFiles = attachmentInfo.filter(att => att.filename?.toLowerCase().endsWith('.evtx'));
-        const hasEvtx = evtxFiles.length > 0;
-        console.log('EVTX files found:', evtxFiles.map(f => f.filename));
-        // If no .evtx files, add a comment to the ticket
-        if (!hasEvtx) {
-            const commentUrl = `${process.env.JIRA_BASE_URL}/rest/api/3/issue/${ticketId}/comment`;
-            const commentBody = {
-                body: {
-                    type: 'doc',
-                    version: 1,
-                    content: [
-                        {
-                            type: 'paragraph',
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: 'No Windows event log (.evtx) file found in attachments.'
-                                }
-                            ]
-                        }
-                    ]
-                }
-            };
-            try {
-                const commentResp = await axios.post(commentUrl, commentBody, axiosConfig);
-                console.log('Added comment to ticket:', commentResp.status);
-            } catch (commentErr) {
-                console.error('Failed to add comment to ticket:', commentErr.message);
-            }
-        }
-        res.json({ ticketId, attachments: attachmentInfo, hasEvtx, evtxFiles, foundLogFiles: hasEvtx });
-    } catch (error) {
-        console.error('--- ERROR DETAILS ---');
-        console.error('Error fetching Jira ticket:', error.message);
-        if (error.response) {
-            console.error('Jira API response status:', error.response.status);
-            console.error('Jira API response headers:', error.response.headers);
-            console.error('Jira API response data:', error.response.data);
-        } else if (error.request) {
-            console.error('No response received from Jira API:', error.request);
-        } else {
-            console.error('Error setting up Jira API request:', error.message);
-        }
-        console.error('----------------------');
-        res.status(500).json({ error: 'Failed to fetch ticket from Jira.' });
-    }
-});
-
 // Step 1: Redirect user to Atlassian for consent
 app.get('/oauth/start', (req, res) => {
     const params = {
@@ -151,9 +59,10 @@ app.get('/oauth/callback', async (req, res) => {
 
 // POST endpoint to refresh access token using refresh_token
 app.post('/oauth/token', async (req, res) => {
-    const { refreshToken } = req.body;
+    // Use refreshToken from body, or fallback to env variable
+    const refreshToken = req.body.refreshToken || process.env.JIRA_OAUTH_REFRESH_TOKEN;
     if (!refreshToken) {
-        return res.status(400).json({ error: 'Missing refreshToken in request body.' });
+        return res.status(400).json({ error: 'Missing refreshToken in request body or environment.' });
     }
     try {
         const tokenResponse = await axios.post('https://auth.atlassian.com/oauth/token', {
