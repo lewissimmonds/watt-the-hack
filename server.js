@@ -90,6 +90,7 @@ function extractIssueCode(url) {
 
 // GET endpoint to fetch Jira ticket details and attachments using OAuth access token and cloudid
 app.get('/jira-ticket', async (req, res) => {
+    console.log('--- /jira-ticket request received ---');
     let { ticketId, accessToken, cloudId, refreshToken } = req.query;
     // If ticketId looks like a URL, extract the code
     if (ticketId && ticketId.startsWith('http')) {
