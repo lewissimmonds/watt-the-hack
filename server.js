@@ -59,8 +59,8 @@ app.get('/oauth/callback', async (req, res) => {
 
 // POST endpoint to refresh access token using refresh_token
 app.post('/oauth/token', async (req, res) => {
-    // Use refreshToken from body, or fallback to env variable
-    const refreshToken = req.body.refreshToken || process.env.JIRA_OAUTH_REFRESH_TOKEN;
+    // Safely handle missing req.body
+    const refreshToken = (req.body && req.body.refreshToken) || process.env.JIRA_OAUTH_REFRESH_TOKEN;
     if (!refreshToken) {
         return res.status(400).json({ error: 'Missing refreshToken in request body or environment.' });
     }
@@ -83,12 +83,28 @@ app.post('/oauth/token', async (req, res) => {
 });
 
 // GET endpoint to fetch Jira ticket details and attachments using OAuth access token and cloudid
-app.get('/jira-oauth-ticket', async (req, res) => {
-    const { ticketId, accessToken, cloudId } = req.query;
-    if (!ticketId || !accessToken || !cloudId) {
-        return res.status(400).json({ error: 'Missing ticketId, accessToken, or cloudId in query params.' });
+app.get('/jira-ticket', async (req, res) => {
+    let { ticketId, accessToken, cloudId, refreshToken } = req.query;
+    if (!ticketId || !cloudId) {
+        return res.status(400).json({ error: 'Missing ticketId or cloudId in query params.' });
     }
     try {
+        // If accessToken is missing but refreshToken is provided, fetch a new access token
+        if (!accessToken && refreshToken) {
+            const tokenResponse = await axios.post('https://auth.atlassian.com/oauth/token', {
+                grant_type: 'refresh_token',
+                client_id: process.env.OAUTH_CLIENT_ID,
+                client_secret: process.env.OAUTH_CLIENT_SECRET,
+                refresh_token: refreshToken
+            }, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+            accessToken = tokenResponse.data.access_token;
+            refreshToken = tokenResponse.data.refresh_token;
+        }
+        if (!accessToken) {
+            return res.status(400).json({ error: 'Missing accessToken or refreshToken in query params.' });
+        }
         const jiraUrl = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${ticketId}`;
         const response = await axios.get(jiraUrl, {
             headers: {
@@ -137,7 +153,7 @@ app.get('/jira-oauth-ticket', async (req, res) => {
         allEvtxFiles.push(...topLevelEvtxFiles);
         const hasEvtx = allEvtxFiles.length > 0;
         console.log('EVTX files found (all sources):', allEvtxFiles);
-        res.json({ ticketId, attachments: attachmentInfo, hasEvtx, evtxFiles: allEvtxFiles, foundLogFiles: hasEvtx });
+        res.json({ ticketId, attachments: attachmentInfo, hasEvtx, evtxFiles: allEvtxFiles, foundLogFiles: hasEvtx, accessToken, refreshToken });
     } catch (error) {
         console.error('--- ERROR DETAILS ---');
         console.error('Error fetching Jira ticket (OAuth):', error.message);
